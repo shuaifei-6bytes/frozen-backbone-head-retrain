@@ -17,6 +17,7 @@ import config.config
 
 # Get device from config
 DEVICE = config.config.DEVICE
+LOCAL_EPOCHS = config.config.LOCAL_EPOCHS
 
 class Trainer:
     """Trainer class for federated learning and head retraining"""
