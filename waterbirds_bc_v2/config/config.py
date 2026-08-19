@@ -71,6 +71,7 @@ NO_AUGMENTATION = True
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHECKPOINT_DIR = os.path.join(BASE_DIR, "checkpoints")
 SUMMARY_DIR = os.path.join(BASE_DIR, "summary")
+DATA_DIR = "/kaggle/input/datasets/feishuai/waterbird-complete95"  # Kaggle dataset path
 
 # Create directories
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)
