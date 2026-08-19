@@ -97,6 +97,7 @@ PROBABILITY_NAMES = [
 ]
 
 # API Keys
-OPENAI_API_KEY = "sk-LbQ9gqKTFijOO4hwv9S30HxbgHCVTbpLZU8JjDlGbt5nUFLA"
+HUGGINGFACE_API_KEY = "sk-LbQ9gqKTFijOO4hwv9S30HxbgHCVTbpLZU8JjDlGbt5nUFLA"
+OPENAI_API_KEY = ""  # Add your OpenAI API key if needed
 ANTHROPIC_API_KEY = ""  # Add your Anthropic API key if needed
 GOOGLE_API_KEY = ""     # Add your Google API key if needed
