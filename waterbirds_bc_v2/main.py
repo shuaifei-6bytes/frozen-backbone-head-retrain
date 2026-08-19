@@ -9,10 +9,10 @@ from typing import Dict, List
 import json
 from datetime import datetime
 from config.config import *
-from utils.model import ResNetWithHead, create_model, save_model
+from utils.model import ResNetWithHead, create_model, save_model, load_model
 from utils.dataset import create_data_loaders, create_counterfactual_loader
 from utils.training import Trainer, FederatedTrainer
-from utils.evaluation import Evaluator, create_counterfactual_bird_ids
+from utils.evaluation import Evaluator
 
 def set_seed(seed: int):
     """Set random seed for reproducibility"""
@@ -98,7 +98,7 @@ def run_head_retraining(seed: int, global_model_path: str, seed_dir: str,
     
     # Create data loaders with retraining distribution
     train_loader, val_loader = create_data_loaders(
-        data_dir=os.path.join(BASE_DIR, "data"),
+        data_dir=DATA_DIR,
         batch_size=HEAD_RETRAIN_BATCH_SIZE,
         distribution=distribution,
         split="train"
@@ -139,19 +139,18 @@ def evaluate_models(seed: int, seed_dir: str,
     
     set_seed(seed)
     
-    # Create counterfactual loader
-    bird_ids = create_counterfactual_bird_ids(num_birds=100)
+    # 反事实评估对（固定在 test 集上构造一次）
     counterfactual_loader = create_counterfactual_loader(
-        data_dir=os.path.join(BASE_DIR, "data"),
-        bird_ids=bird_ids,
+        data_dir=DATA_DIR,
+        num_pairs=NUM_COUNTERFACTUAL_PAIRS,
         batch_size=EVAL_BATCH_SIZE
     )
-    
-    # Create evaluation data loader
+
+    # 全量验证集评估（不套训练分布）
     _, eval_loader = create_data_loaders(
-        data_dir=os.path.join(BASE_DIR, "data"),
+        data_dir=DATA_DIR,
         batch_size=EVAL_BATCH_SIZE,
-        distribution=None,  # Use full distribution for evaluation
+        distribution=None,  # 评估用全量
         split="val"
     )
     

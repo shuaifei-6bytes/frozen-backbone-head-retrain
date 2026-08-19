@@ -71,7 +71,25 @@ NO_AUGMENTATION = True
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHECKPOINT_DIR = os.path.join(BASE_DIR, "checkpoints")
 SUMMARY_DIR = os.path.join(BASE_DIR, "summary")
-DATA_DIR = "/kaggle/input/datasets/feishuai/waterbird-complete95"  # Kaggle dataset path
+
+def _resolve_data_dir() -> str:
+    """定位含 metadata.csv 的 waterbirds 数据目录。
+
+    优先用写死的 Kaggle 完整路径；不存在时自动扫描 /kaggle/input 找 metadata.csv，
+    兼顾 Kaggle 数据集挂载层级差异。
+    """
+    cand = "/kaggle/input/datasets/feishuai/waterbird-complete95/waterbird_complete95_forest2water2"
+    if os.path.isdir(cand) and os.path.exists(os.path.join(cand, "metadata.csv")):
+        return cand
+    for root, _, files in os.walk("/kaggle/input"):
+        if "metadata.csv" in files:
+            return root
+    return cand
+
+DATA_DIR = _resolve_data_dir()
+
+# 反事实评估对数量（每类主体）
+NUM_COUNTERFACTUAL_PAIRS = 200
 
 # Create directories
 os.makedirs(CHECKPOINT_DIR, exist_ok=True)

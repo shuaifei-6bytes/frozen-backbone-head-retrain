@@ -26,7 +26,7 @@ from config.config import *
 from utils.dataset import create_data_loaders, create_counterfactual_loader
 from utils.model import ResNetWithHead, create_model, save_model
 from utils.training import Trainer, FederatedTrainer
-from utils.evaluation import Evaluator, create_counterfactual_bird_ids
+from utils.evaluation import Evaluator
 
 # 2. Device Setup
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -38,30 +38,12 @@ if torch.cuda.is_available():
 
 # 3. Dataset Setup
 def setup_dataset():
-    """Setup dataset for Kaggle environment"""
-    print("Setting up dataset...")
-    
-    # Create directories
-    data_dir = "/kaggle/input/waterbirds-dataset"  # Modify this based on your dataset location
-    processed_dir = os.path.join(project_dir, "data")
-    os.makedirs(processed_dir, exist_ok=True)
-    
-    # Check if dataset exists
-    if os.path.exists(data_dir):
-        print(f"Dataset found at: {data_dir}")
-        
-        # Create symbolic link for easy access
-        os.symlink(data_dir, os.path.join(processed_dir, "waterbirds"))
-        
-        return os.path.join(processed_dir, "waterbirds")
-    else:
-        print("Dataset not found. Please upload the Waterbirds dataset.")
-        print("Expected structure:")
-        print("waterbirds-dataset/")
-        print("├── train/")
-        print("├── val/")
-        print("└── test/")
-        return None
+    """返回含 metadata.csv 的 waterbirds 数据目录（config 已自动探测）。"""
+    print(f"数据目录: {DATA_DIR}")
+    if os.path.exists(DATA_DIR) and os.path.exists(os.path.join(DATA_DIR, "metadata.csv")):
+        return DATA_DIR
+    print(f"未在 {DATA_DIR} 找到 metadata.csv，请检查 Kaggle 数据集挂载")
+    return None
 
 # 4. Main Experiment Functions
 def run_single_seed_experiment(seed: int, data_dir: str):
@@ -193,19 +175,18 @@ def evaluate_models(seed: int, seed_dir: str,
     """Evaluate all models for a specific seed"""
     print("Evaluating models...")
     
-    # Create counterfactual loader
-    bird_ids = create_counterfactual_bird_ids(num_birds=100)
+    # 反事实评估对（固定 test 集构造一次）
     counterfactual_loader = create_counterfactual_loader(
         data_dir=data_dir,
-        bird_ids=bird_ids,
+        num_pairs=NUM_COUNTERFACTUAL_PAIRS,
         batch_size=EVAL_BATCH_SIZE
     )
-    
-    # Create evaluation data loader
+
+    # 全量验证集评估（不套训练分布）
     _, eval_loader = create_data_loaders(
         data_dir=data_dir,
         batch_size=EVAL_BATCH_SIZE,
-        distribution=None,  # Use full distribution for evaluation
+        distribution=None,
         split="val"
     )
     

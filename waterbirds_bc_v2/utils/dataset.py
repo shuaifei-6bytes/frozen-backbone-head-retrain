@@ -1,291 +1,208 @@
 """
-Dataset utilities for Waterbirds B/C experiment V2
+Waterbirds 数据集与反事实评估对工具（对接真实 waterbird_complete95 数据）
 """
-
-import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from torchvision import transforms, datasets
-import numpy as np
 import os
-from typing import Dict, List, Tuple, Optional
+import numpy as np
+import pandas as pd
 from PIL import Image
-import json
+from typing import Dict, List, Tuple, Optional
+from torch.utils.data import Dataset, DataLoader
+from torchvision import transforms
+import torch
+
+# 全局常量：group 四分类与二分类 label 的对应关系
+# waterbird: 1=水鸟 0=陆鸟；water_background: 1=水背景 0=陆地背景
+GROUP_OF = {
+    (1, 1): "WB-Water",   # 水鸟 + 水背景
+    (1, 0): "WB-Land",    # 水鸟 + 陆地背景
+    (0, 0): "LB-Land",    # 陆鸟 + 陆地背景
+    (0, 1): "LB-Water",   # 陆鸟 + 水背景
+}
+GROUP_NAMES = ["WB-Water", "WB-Land", "LB-Land", "LB-Water"]
+
+
+def load_metadata(root_dir: str, split: str = "train") -> pd.DataFrame:
+    """读取 waterbirds metadata.csv 并过滤指定 split。
+
+    root_dir 指向 waterbird_complete95_forest2water2（含 metadata.csv 与图片子目录）。
+    兼容标准 Waterbirds 元数据列名（img_path / img_filename、waterbird、water_background、split）。
+    """
+    meta = pd.read_csv(os.path.join(root_dir, "metadata.csv"))
+
+    def col(name):
+        # 兼容列名差异（例如 img_path 也可能是 img_filename）
+        if name in meta.columns:
+            return name
+        alt = {"img_path": "img_filename", "img_filename": "img_path"}
+        return alt.get(name, name)
+
+    img_col = col("img_path")
+    if img_col not in meta.columns:
+        raise KeyError(f"metadata.csv 缺少图片路径列，现有列: {list(meta.columns)}")
+
+    split_col = "split" if "split" in meta.columns else None
+    if split_col is not None:
+        meta = meta[meta[split_col] == split]
+
+    # 图片完整路径
+    meta["_fullpath"] = meta[img_col].apply(
+        lambda p: p if os.path.isabs(p) else os.path.join(root_dir, str(p))
+    )
+    return meta.reset_index(drop=True)
+
+
+def _group_series(meta: pd.DataFrame):
+    """把 waterbird / water_background 两列映射为 group 名列表。"""
+    wb = meta["waterbird"].values
+    bg = meta["water_background"].values
+    return [GROUP_OF[(int(w), int(b))] for w, b in zip(wb, bg)]
+
+
+def get_transform(split: str):
+    """训练用随机水平翻转；评估用无增强。均 224 归一化。"""
+    base = [
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ]
+    if split == "train":
+        base.insert(1, transforms.RandomHorizontalFlip())
+    return transforms.Compose(base)
+
 
 class WaterbirdsDataset(Dataset):
-    """Custom Waterbirds dataset with group-based sampling control"""
-    
-    def __init__(self, root_dir: str, split: str = "train", 
+    """真实 Waterbirds 数据集。
+
+    支持按 group 分布采样：不足目标数量的 group 会用重复采样补齐，
+    保证 B/C（以及全局训练）每个 epoch 看到大致相同的样本总量（§6 公平性）。
+    """
+
+    def __init__(self, root_dir: str, split: str = "train",
                  distribution: Dict[str, float] = None,
-                 transform: Optional[transforms.Compose] = None,
-                 seed: int = 42):
-        """
-        Args:
-            root_dir: Root directory containing waterbirds dataset
-            split: 'train', 'val', or 'test'
-            distribution: Dictionary mapping group names to sampling probabilities
-            transform: Data augmentation pipeline
-            seed: Random seed for reproducibility
-        """
-        self.root_dir = root_dir
+                 transform=None, seed: int = 42):
         self.split = split
         self.distribution = distribution or {}
-        self.transform = transform or self._get_default_transform()
         self.seed = seed
-        
-        # Load dataset metadata
-        self.samples, self.labels, self.groups = self._load_metadata()
-        
-        # Filter samples based on split
-        self._filter_by_split()
-        
-        # Apply distribution sampling if provided
-        if self.distribution:
-            self._apply_distribution_sampling()
-        
-        # Create group mapping
-        self.group_to_idx = {group: i for i, group in enumerate(GROUP_NAMES)}
-        
-    def _get_default_transform(self):
-        """Get default transformation pipeline"""
-        if self.split == "train":
-            return transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
-        else:
-            return transforms.Compose([
-                transforms.Resize((224, 224)),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-            ])
-    
-    def _load_metadata(self):
-        """Load sample metadata and group information"""
-        # This is a placeholder - actual implementation depends on dataset structure
-        # Assuming dataset has a metadata file or can be inferred from filenames
-        samples = []
-        labels = []
-        groups = []
-        
-        # For now, create dummy data structure
-        # In practice, you would load actual waterbirds dataset
-        num_samples = 1000  # Placeholder
-        
-        for i in range(num_samples):
-            # Simulate different groups
-            group_idx = i % NUM_GROUPS
-            group = GROUP_NAMES[group_idx]
-            label = 0 if group in ["WB-Water", "WB-Land"] else 1
-            
-            samples.append(f"sample_{i}.jpg")
-            labels.append(label)
-            groups.append(group)
-            
-        return samples, labels, groups
-    
-    def _filter_by_split(self):
-        """Filter samples based on split"""
-        # This is a placeholder - actual implementation depends on dataset structure
-        # For now, assume we have a way to determine split
-        if self.split == "train":
-            keep_indices = list(range(int(0.8 * len(self.samples))))
-        elif self.split == "val":
-            keep_indices = list(range(int(0.8 * len(self.samples)), 
-                                   int(0.9 * len(self.samples))))
-        else:  # test
-            keep_indices = list(range(int(0.9 * len(self.samples)), len(self.samples)))
-            
-        self.samples = [self.samples[i] for i in keep_indices]
-        self.labels = [self.labels[i] for i in keep_indices]
-        self.groups = [self.groups[i] for i in keep_indices]
-    
-    def _apply_distribution_sampling(self):
-        """Apply distribution-based sampling"""
+        self.transform = transform or get_transform(split)
+
+        meta = load_metadata(root_dir, split)
+        self.meta = meta
+        self.groups = _group_series(meta)
+        self.labels = meta["waterbird"].astype(int).tolist()
+
+        # 采样后保留的原始行下标（用于 __getitem__）
+        self.indices = self._sample_indices()
+
+    def _sample_indices(self):
+        """根据 distribution 生成每个 group 的抽样下标；不足则重复补齐。"""
         if not self.distribution:
-            return
-            
-        # Group samples by group
-        group_samples = {group: [] for group in GROUP_NAMES}
-        group_labels = {group: [] for group in GROUP_NAMES}
-        
-        for i, group in enumerate(self.groups):
-            group_samples[group].append(self.samples[i])
-            group_labels[group].append(self.labels[i])
-        
-        # Sample according to distribution
-        total_samples = sum(len(samples) for samples in group_samples.values())
-        target_samples = {group: int(prob * total_samples) 
-                         for group, prob in self.distribution.items()}
-        
-        # Apply sampling
-        new_samples = []
-        new_labels = []
-        new_groups = []
-        
+            return list(range(len(self.meta)))
+
+        # 按 group 分组原始下标
+        grouped: Dict[str, List[int]] = {g: [] for g in GROUP_NAMES}
+        for i, g in enumerate(self.groups):
+            grouped[g].append(i)
+
+        total = len(self.meta)
+        rng = np.random.RandomState(self.seed)
+        picked: List[int] = []
         for group in GROUP_NAMES:
-            if group in self.distribution and group_samples[group]:
-                n_samples = min(target_samples[group], len(group_samples[group]))
-                indices = np.random.RandomState(self.seed).choice(
-                    len(group_samples[group]), n_samples, replace=False)
-                
-                for idx in indices:
-                    new_samples.append(group_samples[group][idx])
-                    new_labels.append(group_labels[group][idx])
-                    new_groups.append(group)
-        
-        self.samples = new_samples
-        self.labels = new_labels
-        self.groups = new_groups
-    
+            if group not in self.distribution or not grouped[group]:
+                continue
+            idx_pool = np.array(grouped[group])
+            target = int(self.distribution[group] * total)
+            if target <= 0:
+                continue
+            # 目标超过实际数量 → 可重复采样补齐，使各 epoch 样本量对齐
+            replace = target > len(idx_pool)
+            sel = rng.choice(idx_pool, size=target, replace=replace)
+            picked.extend(sel.tolist())
+        return picked
+
     def __len__(self):
-        return len(self.samples)
-    
+        return len(self.indices)
+
     def __getitem__(self, idx):
-        # Load image
-        image_path = os.path.join(self.root_dir, self.samples[idx])
-        image = Image.open(image_path).convert('RGB')
-        image = self.transform(image)
-        
-        # Get label and group
-        label = self.labels[idx]
-        group = self.groups[idx]
-        
+        row = self.meta.iloc[self.indices[idx]]
+        img = Image.open(row["_fullpath"]).convert("RGB")
+        img = self.transform(img)
         return {
-            'image': image,
-            'label': torch.tensor(label, dtype=torch.long),
-            'group': group,
-            'sample_id': self.samples[idx]
+            "image": img,
+            "label": torch.tensor(self.labels[self.indices[idx]], dtype=torch.long),
+            "group": self.groups[self.indices[idx]],
+            "sample_id": str(self.indices[idx]),
         }
+
 
 class CounterfactualDataset(Dataset):
-    """Dataset for counterfactual evaluation"""
-    
-    def __init__(self, root_dir: str, bird_ids: List[str], 
-                 transform: Optional[transforms.Compose] = None):
-        """
-        Args:
-            root_dir: Root directory containing waterbirds dataset
-            bird_ids: List of bird IDs to create counterfactual pairs
-            transform: Data augmentation pipeline
-        """
-        self.root_dir = root_dir
-        self.bird_ids = bird_ids
-        self.transform = transform or self._get_default_transform()
-        
-        # Create counterfactual pairs
-        self.counterfactual_pairs = self._create_counterfactual_pairs()
-    
-    def _get_default_transform(self):
-        """Get default transformation pipeline"""
-        return transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-    
-    def _create_counterfactual_pairs(self):
-        """Create counterfactual image pairs for each bird"""
-        pairs = []
-        
-        for bird_id in self.bird_ids:
-            # Create pair: same bird with different backgrounds
-            pair = {
-                'bird_id': bird_id,
-                'water_background': f"{bird_id}_water.jpg",
-                'land_background': f"{bird_id}_land.jpg"
-            }
-            pairs.append(pair)
-        
-        return pairs
-    
-    def __len__(self):
-        return len(self.counterfactual_pairs)
-    
-    def __getitem__(self, idx):
-        pair = self.counterfactual_pairs[idx]
-        
-        # Load both images
-        water_img = Image.open(os.path.join(self.root_dir, pair['water_background'])).convert('RGB')
-        land_img = Image.open(os.path.join(self.root_dir, pair['land_background'])).convert('RGB')
-        
-        water_img = self.transform(water_img)
-        land_img = self.transform(land_img)
-        
-        return {
-            'bird_id': pair['bird_id'],
-            'water_background': water_img,
-            'land_background': land_img
-        }
+    """反事实评估对数据集。
 
-def create_data_loaders(data_dir: str, batch_size: int = 32, 
-                       distribution: Dict[str, float] = None,
-                       split: str = "train") -> Tuple[DataLoader, DataLoader]:
-    """Create train and validation data loaders"""
-    
-    # Create datasets
+    对每个主体类型构造"同一类鸟主体 + 两种背景"的配对：
+      - 水鸟对：水背景样本 与 陆地背景样本 配对
+      - 陆鸟对：陆地背景样本 与 水背景样本 配对
+    配对数量取两 group 样本数的较小值，用固定 seed 随机配对以保证可复现。
+    ponytail: 真实数据没有"同一只鸟"的两种背景，这里用同类鸟随机配对近似主体不变；
+    要做严格同一主体需背景合成，成本高，暂不做。
+    """
+
+    def __init__(self, root_dir: str, split: str = "test",
+                 transform=None, num_pairs: int = 200, seed: int = 0):
+        self.transform = transform or get_transform("val")
+        meta = load_metadata(root_dir, split)
+        groups = _group_series(meta)
+        self.labels = meta["waterbird"].astype(int).tolist()
+        self.paths = meta["_fullpath"].tolist()
+
+        rng = np.random.RandomState(seed)
+        self.pairs = []  # 每项: (kind, imgA_path, imgB_path)
+        for kind, gA, gB in [("waterbird", "WB-Water", "WB-Land"),
+                             ("landbird", "LB-Land", "LB-Water")]:
+            idxA = [i for i, g in enumerate(groups) if g == gA]
+            idxB = [i for i, g in enumerate(groups) if g == gB]
+            k = min(len(idxA), len(idxB), num_pairs)
+            if k == 0:
+                continue
+            pickA = rng.choice(idxA, size=k, replace=False)
+            pickB = rng.choice(idxB, size=k, replace=False)
+            for a, b in zip(pickA, pickB):
+                self.pairs.append((kind, self.paths[a], self.paths[b]))
+
+    def __len__(self):
+        return len(self.pairs)
+
+    def __getitem__(self, idx):
+        kind, pathA, pathB = self.pairs[idx]
+        imgA = self.transform(Image.open(pathA).convert("RGB"))
+        imgB = self.transform(Image.open(pathB).convert("RGB"))
+        return {"kind": kind, "imgA": imgA, "imgB": imgB}
+
+
+def create_data_loaders(data_dir: str, batch_size: int = 32,
+                        distribution: Dict[str, float] = None,
+                        split: str = "train",
+                        seed: int = 42) -> Tuple[DataLoader, DataLoader]:
+    """创建训练集（可带分布采样）与全量验证集。"""
     train_dataset = WaterbirdsDataset(
-        root_dir=data_dir,
-        split="train",
-        distribution=distribution,
-        transform=transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+        root_dir=data_dir, split="train",
+        distribution=distribution, transform=get_transform("train"), seed=seed,
     )
-    
+    # 验证集始终全量（不套用训练分布），保证评估口径干净
     val_dataset = WaterbirdsDataset(
-        root_dir=data_dir,
-        split="val",
-        distribution=distribution,
-        transform=transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
+        root_dir=data_dir, split="val", transform=get_transform("val"), seed=seed,
     )
-    
-    # Create data loaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=4,
-        pin_memory=True
-    )
-    
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=4,
-        pin_memory=True
-    )
-    
+
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
+                              num_workers=4, pin_memory=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
+                            num_workers=4, pin_memory=True)
     return train_loader, val_loader
 
-def create_counterfactual_loader(data_dir: str, bird_ids: List[str], 
-                               batch_size: int = 32) -> DataLoader:
-    """Create counterfactual evaluation data loader"""
-    
-    dataset = CounterfactualDataset(
-        root_dir=data_dir,
-        bird_ids=bird_ids,
-        transform=transforms.Compose([
-            transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-    )
-    
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=4,
-        pin_memory=True
-    )
+
+def create_counterfactual_loader(data_dir: str, transform=None,
+                                 num_pairs: int = 200, batch_size: int = 64,
+                                 seed: int = 0) -> DataLoader:
+    """构造反事实评估数据加载器。"""
+    dataset = CounterfactualDataset(data_dir, split="test", transform=transform,
+                                    num_pairs=num_pairs, seed=seed)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False,
+                      num_workers=4, pin_memory=True)
