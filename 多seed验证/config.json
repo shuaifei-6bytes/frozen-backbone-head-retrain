@@ -1,0 +1,17 @@
+{
+  "seeds": [42, 123, 456, 789, 1024],
+  "data_dir": "/path/to/waterbird_complete95_forest2water2",
+  "num_minibatches": 8,
+  "top_k": 10,
+  "tau_D": 0.05,
+  "tau_P": 0.02,
+  "batch_size": 32,
+  "mb_batch_size": 16,
+  "sparse_edit_epochs": 5,
+  "sparse_edit_lr": 0.001,
+  "head_only_epochs": 5,
+  "head_only_lr": 0.001,
+  "device": "auto",
+  "m_global_path": "/path/to/m_global.pt",
+  "description": "多seed验证实验配置"
+}

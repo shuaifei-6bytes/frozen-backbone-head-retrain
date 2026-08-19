@@ -1,0 +1,6 @@
+[
+  {
+    "seed": 42,
+    "error": "default_collate: batch must contain tensors, numpy arrays, numbers, dicts or lists; found <class 'PIL.Image.Image'>"
+  }
+]

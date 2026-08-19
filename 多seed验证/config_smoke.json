@@ -1,0 +1,17 @@
+{
+  "seeds": [42],
+  "data_dir": "/mnt/d/VS Code 项目/federated_relation_unlearning/新建文件夹/冻结backbone+Head重训/waterbird_complete95_forest2water2",
+  "num_minibatches": 3,
+  "top_k": 5,
+  "tau_D": 0.03,
+  "tau_P": 0.01,
+  "batch_size": 16,
+  "mb_batch_size": 8,
+  "sparse_edit_epochs": 1,
+  "sparse_edit_lr": 0.001,
+  "head_only_epochs": 1,
+  "head_only_lr": 0.001,
+  "device": "cpu",
+  "m_global_path": null,
+  "description": "冒烟测试 - 1 epoch"
+}

@@ -1,0 +1,22 @@
+# 数据集
+waterbird_complete95_forest2water2/
+
+# 模型权重（太大，不适合放 GitHub）
+*.pt
+*.pth
+*.ckpt
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# IDE
+.vscode/
+.idea/
+
+# 日志
+*.log
+
+# 输出目录
+output/
