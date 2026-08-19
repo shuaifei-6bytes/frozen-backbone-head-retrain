@@ -1,0 +1,393 @@
+"""
+Kaggle Notebook Template for Waterbirds B/C Experiment V2
+
+This notebook provides a complete template for running the Waterbirds B/C experiment on Kaggle.
+"""
+
+# 1. Setup and Imports
+import os
+import sys
+import torch
+import numpy as np
+import pandas as pd
+from datetime import datetime
+import json
+from pathlib import Path
+
+# Add the project directory to Python path
+project_dir = "/kaggle/working/waterbirds_bc_v2"
+os.makedirs(project_dir, exist_ok=True)
+os.chdir(project_dir)
+
+# Import project modules
+sys.path.append(project_dir)
+
+from config.config import *
+from utils.dataset import create_data_loaders, create_counterfactual_loader
+from utils.model import ResNetWithHead, create_model, save_model
+from utils.training import Trainer, FederatedTrainer
+from utils.evaluation import Evaluator, create_counterfactual_bird_ids
+
+# 2. Device Setup
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
+print(f"CUDA available: {torch.cuda.is_available()}")
+if torch.cuda.is_available():
+    print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f"GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+
+# 3. Dataset Setup
+def setup_dataset():
+    """Setup dataset for Kaggle environment"""
+    print("Setting up dataset...")
+    
+    # Create directories
+    data_dir = "/kaggle/input/waterbirds-dataset"  # Modify this based on your dataset location
+    processed_dir = os.path.join(project_dir, "data")
+    os.makedirs(processed_dir, exist_ok=True)
+    
+    # Check if dataset exists
+    if os.path.exists(data_dir):
+        print(f"Dataset found at: {data_dir}")
+        
+        # Create symbolic link for easy access
+        os.symlink(data_dir, os.path.join(processed_dir, "waterbirds"))
+        
+        return os.path.join(processed_dir, "waterbirds")
+    else:
+        print("Dataset not found. Please upload the Waterbirds dataset.")
+        print("Expected structure:")
+        print("waterbirds-dataset/")
+        print("├── train/")
+        print("├── val/")
+        print("└── test/")
+        return None
+
+# 4. Main Experiment Functions
+def run_single_seed_experiment(seed: int, data_dir: str):
+    """Run complete experiment for a single seed"""
+    print(f"\n{'='*60}")
+    print(f"Starting experiment for seed {seed}")
+    print(f"{'='*60}")
+    
+    # Set seed
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    np.random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    
+    # Create output directory
+    seed_dir = os.path.join(project_dir, f"seed_{seed}")
+    os.makedirs(seed_dir, exist_ok=True)
+    
+    # Step 1: Federated training
+    print("Step 1: Federated Training")
+    global_model_path = run_federated_training(seed, seed_dir, data_dir)
+    
+    # Step 2: Head retraining
+    print("Step 2: Head Retraining")
+    b_model_path = run_head_retraining(seed, global_model_path, seed_dir, "B", B_DISTRIBUTION, data_dir)
+    c_model_path = run_head_retraining(seed, global_model_path, seed_dir, "C", C_DISTRIBUTION, data_dir)
+    
+    # Step 3: Evaluation
+    print("Step 3: Evaluation")
+    results = evaluate_models(seed, seed_dir, global_model_path, b_model_path, c_model_path, data_dir)
+    
+    return results
+
+def run_federated_training(seed: int, seed_dir: str, data_dir: str) -> str:
+    """Run federated training for a specific seed"""
+    print("Running federated training...")
+    
+    # Create data loaders
+    train_loader, val_loader = create_data_loaders(
+        data_dir=data_dir,
+        batch_size=BATCH_SIZE,
+        distribution=GLOBAL_TRAIN_DISTRIBUTION,
+        split="train"
+    )
+    
+    # Create federated trainer
+    federated_trainer = FederatedTrainer(
+        num_clients=NUM_CLIENTS,
+        train_loaders=[train_loader] * NUM_CLIENTS,  # Simplified: same data for all clients
+        val_loaders=[val_loader] * NUM_CLIENTS,
+        learning_rate=LEARNING_RATE,
+        device=device
+    )
+    
+    # Train federated model
+    print(f"Training for {GLOBAL_ROUNDS} rounds...")
+    history = federated_trainer.train(rounds=GLOBAL_ROUNDS)
+    
+    # Save global model
+    global_model_path = os.path.join(seed_dir, "M_global.pt")
+    save_model(federated_trainer.global_model, global_model_path)
+    
+    # Save training history
+    history_path = os.path.join(seed_dir, "federated_training_history.json")
+    with open(history_path, 'w') as f:
+        json.dump(history, f, indent=2)
+    
+    print(f"Federated training completed. Model saved to {global_model_path}")
+    return global_model_path
+
+def run_head_retraining(seed: int, global_model_path: str, seed_dir: str, 
+                       retraining_type: str, distribution: Dict[str, float], data_dir: str) -> str:
+    """Run head retraining for B or C"""
+    print(f"Running {retraining_type} head retraining...")
+    
+    # Create model with frozen backbone
+    model = create_model(num_classes=2, freeze_backbone=True)
+    
+    # Load backbone from global model
+    model.load_backbone_from_checkpoint(global_model_path)
+    
+    # Load head initialization
+    head_init_path = os.path.join(seed_dir, "head_init.pt")
+    if not os.path.exists(head_init_path):
+        # Save head initialization if not exists
+        model.save_head_initialization(head_init_path)
+        print(f"Head initialization saved to {head_init_path}")
+    else:
+        model.load_head_initialization(head_init_path)
+    
+    # Create data loaders
+    train_loader, val_loader = create_data_loaders(
+        data_dir=data_dir,
+        batch_size=HEAD_RETRAIN_BATCH_SIZE,
+        distribution=distribution,
+        split="train"
+    )
+    
+    # Create trainer
+    trainer = Trainer(
+        model=model,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        learning_rate=HEAD_RETRAIN_LR,
+        device=device
+    )
+    
+    # Train head
+    model_path = os.path.join(seed_dir, f"{retraining_type}.pt")
+    print(f"Training head for {HEAD_RETRAIN_EPOCHS} epochs...")
+    history = trainer.train(
+        epochs=HEAD_RETRAIN_EPOCHS,
+        save_path=model_path
+    )
+    
+    # Save training history
+    history_path = os.path.join(seed_dir, f"{retraining_type}_training_history.json")
+    with open(history_path, 'w') as f:
+        json.dump(history, f, indent=2)
+    
+    print(f"{retraining_type} head retraining completed. Model saved to {model_path}")
+    return model_path
+
+def evaluate_models(seed: int, seed_dir: str, 
+                   global_model_path: str, 
+                   b_model_path: str, 
+                   c_model_path: str, data_dir: str):
+    """Evaluate all models for a specific seed"""
+    print("Evaluating models...")
+    
+    # Create counterfactual loader
+    bird_ids = create_counterfactual_bird_ids(num_birds=100)
+    counterfactual_loader = create_counterfactual_loader(
+        data_dir=data_dir,
+        bird_ids=bird_ids,
+        batch_size=EVAL_BATCH_SIZE
+    )
+    
+    # Create evaluation data loader
+    _, eval_loader = create_data_loaders(
+        data_dir=data_dir,
+        batch_size=EVAL_BATCH_SIZE,
+        distribution=None,  # Use full distribution for evaluation
+        split="val"
+    )
+    
+    # Models to evaluate
+    models = [
+        ("M_global", global_model_path),
+        ("B", b_model_path),
+        ("C", c_model_path)
+    ]
+    
+    results = {}
+    
+    for model_name, model_path in models:
+        print(f"Evaluating {model_name}...")
+        
+        # Load model
+        model = create_model(num_classes=2, freeze_backbone=True)
+        from utils.model import load_model
+        load_model(model, model_path, load_head=True)
+        
+        # Create evaluator
+        evaluator = Evaluator(model, device=device)
+        
+        # Evaluate model
+        model_results = evaluator.evaluate_model(
+            data_loader=eval_loader,
+            counterfactual_loader=counterfactual_loader,
+            model_name=model_name,
+            save_dir=seed_dir
+        )
+        
+        results[model_name] = model_results
+        
+        print(f"{model_name} Results:")
+        print(f"  Overall Accuracy: {model_results['overall_accuracy']:.2f}%")
+        print(f"  Worst Group Accuracy: {model_results['worst_group_accuracy']:.2f}%")
+        print(f"  Delta Waterbird: {model_results['delta_waterbird']:.4f}")
+        print(f"  Delta Landbird: {model_results['delta_landbird']:.4f}")
+        print(f"  Background Gap: {model_results['background_gap']:.4f}")
+        print(f"  Original Flip Rate: {model_results['original_flip_rate']:.4f}")
+        print(f"  Reverse Flip Rate: {model_results['reverse_flip_rate']:.4f}")
+        print(f"  Group Accuracies: {model_results['group_accuracies']}")
+    
+    # Save combined results
+    results_path = os.path.join(seed_dir, "metrics.json")
+    with open(results_path, 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    return results
+
+def summarize_results(all_results: Dict[int, Dict]):
+    """Summarize results across all seeds"""
+    print(f"\n{'='*60}")
+    print("SUMMARY ACROSS ALL SEEDS")
+    print(f"{'='*60}")
+    
+    # Extract metrics for each model
+    models = ["M_global", "B", "C"]
+    metrics = ["overall_accuracy", "worst_group_accuracy", "delta_waterbird", 
+               "delta_landbird", "background_gap", "original_flip_rate", "reverse_flip_rate"]
+    
+    summary = {}
+    
+    for model in models:
+        model_results = []
+        for seed in SEEDS:
+            if seed in all_results and model in all_results[seed]:
+                model_results.append(all_results[seed][model])
+        
+        if model_results:
+            summary[model] = {}
+            for metric in metrics:
+                values = [r[metric] for r in model_results]
+                summary[model][metric] = {
+                    'mean': np.mean(values),
+                    'std': np.std(values),
+                    'values': values
+                }
+    
+    # Print summary
+    print("\nMean ± Standard Deviation:")
+    print(f"{'Model':<12} {'Metric':<25} {'Mean':<10} {'Std':<10}")
+    print("-" * 60)
+    
+    for model in models:
+        for metric in metrics:
+            if metric in summary[model]:
+                mean_val = summary[model][metric]['mean']
+                std_val = summary[model][metric]['std']
+                print(f"{model:<12} {metric:<25} {mean_val:<10.4f} {std_val:<10.4f}")
+    
+    # Save summary
+    summary_path = os.path.join(project_dir, "summary.json")
+    with open(summary_path, 'w') as f:
+        json.dump(summary, f, indent=2)
+    
+    # Print comparison B vs C
+    print(f"\n{'='*60}")
+    print("B vs C COMPARISON")
+    print(f"{'='*60}")
+    
+    b_c_metrics = ["background_gap", "original_flip_rate", "reverse_flip_rate"]
+    
+    print(f"{'Metric':<25} {'B Mean ± Std':<20} {'C Mean ± Std':<20} {'B < C':<10}")
+    print("-" * 75)
+    
+    for metric in b_c_metrics:
+        if metric in summary['B'] and metric in summary['C']:
+            b_mean = summary['B'][metric]['mean']
+            b_std = summary['B'][metric]['std']
+            c_mean = summary['C'][metric]['mean']
+            c_std = summary['C'][metric]['std']
+            b_less_c = b_mean < c_mean
+            
+            print(f"{metric:<25} {b_mean:.4f} ± {b_std:.4f}     {c_mean:.4f} ± {c_std:.4f}     {b_less_c}")
+    
+    return summary
+
+# 5. Main Execution
+def main():
+    """Main experiment runner"""
+    print("Waterbirds B/C Experiment V2")
+    print(f"Starting at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Using device: {device}")
+    print(f"Seeds: {SEEDS}")
+    
+    # Setup dataset
+    data_dir = setup_dataset()
+    if data_dir is None:
+        print("Dataset setup failed. Please check dataset location.")
+        return
+    
+    # Run experiments for each seed
+    all_results = {}
+    
+    for seed in SEEDS:
+        try:
+            results = run_single_seed_experiment(seed, data_dir)
+            all_results[seed] = results
+        except Exception as e:
+            print(f"Error running experiment for seed {seed}: {e}")
+            import traceback
+            traceback.print_exc()
+            continue
+    
+    # Summarize results
+    if all_results:
+        summary = summarize_results(all_results)
+        
+        print(f"\n{'='*60}")
+        print("EXPERIMENT COMPLETED")
+        print(f"{'='*60}")
+        print(f"Results saved to {project_dir}")
+        
+        # Save experiment metadata
+        experiment_info = {
+            'experiment_name': 'Waterbirds B/C Experiment V2',
+            'start_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'device': str(device),
+            'seeds': SEEDS,
+            'completed_seeds': list(all_results.keys()),
+            'summary': summary
+        }
+        
+        with open(os.path.join(project_dir, 'experiment_info.json'), 'w') as f:
+            json.dump(experiment_info, f, indent=2)
+        
+        # Print final summary
+        print("\nFinal Results Summary:")
+        print(f"Completed seeds: {len(all_results)}/{len(SEEDS)}")
+        
+        if len(all_results) >= 2:  # Need at least 2 seeds for meaningful comparison
+            print("\nB vs C Comparison:")
+            b_bg = summary['B']['background_gap']['mean']
+            c_bg = summary['C']['background_gap']['mean']
+            print(f"Background Gap - B: {b_bg:.4f}, C: {c_bg:.4f}, B < C: {b_bg < c_bg}")
+            
+            b_flip = summary['B']['original_flip_rate']['mean']
+            c_flip = summary['C']['original_flip_rate']['mean']
+            print(f"Original Flip Rate - B: {b_flip:.4f}, C: {c_flip:.4f}, B < C: {b_flip < c_flip}")
+    else:
+        print("No results generated. Check for errors.")
+
+if __name__ == "__main__":
+    main()
