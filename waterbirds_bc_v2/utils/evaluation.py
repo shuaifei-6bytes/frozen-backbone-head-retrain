@@ -13,6 +13,11 @@ import os
 from tqdm import tqdm
 from utils.model import ResNetWithHead
 from utils.dataset import create_counterfactual_loader
+import config.config
+
+# Get config values
+DEVICE = config.config.DEVICE
+GROUP_NAMES = config.config.GROUP_NAMES
 
 class Evaluator:
     """Evaluator class for B/C experiment metrics"""
