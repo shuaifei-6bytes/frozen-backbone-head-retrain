@@ -95,9 +95,3 @@ PROBABILITY_NAMES = [
     "P_LB_LAND",   # P(landbird | landbird + land background)
     "P_LB_WATER"   # P(landbird | landbird + water background)
 ]
-
-# API Keys
-HUGGINGFACE_API_KEY = "sk-LbQ9gqKTFijOO4hwv9S30HxbgHCVTbpLZU8JjDlGbt5nUFLA"
-OPENAI_API_KEY = ""  # Add your OpenAI API key if needed
-ANTHROPIC_API_KEY = ""  # Add your Anthropic API key if needed
-GOOGLE_API_KEY = ""     # Add your Google API key if needed
