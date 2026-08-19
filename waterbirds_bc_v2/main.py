@@ -38,7 +38,7 @@ def run_federated_training(seed: int, seed_dir: str) -> str:
     
     # Create data loaders with global training distribution
     train_loader, val_loader = create_data_loaders(
-        data_dir=os.path.join(BASE_DIR, "data"),
+        data_dir=DATA_DIR,
         batch_size=BATCH_SIZE,
         distribution=GLOBAL_TRAIN_DISTRIBUTION,
         split="train"
