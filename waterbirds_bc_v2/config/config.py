@@ -40,8 +40,7 @@ FREEZE_BACKBONE = True
 # Training configuration
 BATCH_SIZE = 32
 LEARNING_RATE = 0.001
-LOCAL_EPOCHS = 1
-OPTIMIZER = "adam"
+LOCAL_EPOCHS = 3   # 每个客户端本地 epoch，从 1 提到 3：保证 head 在冻结 backbone 下学出区分度
 
 # Head retraining configuration
 HEAD_RETRAIN_EPOCHS = 20

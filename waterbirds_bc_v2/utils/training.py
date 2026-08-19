@@ -48,6 +48,8 @@ class Trainer:
     def train_epoch(self) -> Dict[str, float]:
         """Train for one epoch"""
         self.model.train()
+        # 冻结 backbone 时保持其 eval：防止仅训 head 时 BN running 统计被刷新/漂移
+        self.model.backbone.eval()
         total_loss = 0.0
         correct = 0
         total = 0
@@ -190,6 +192,7 @@ class FederatedTrainer:
         
         # Train client
         client_model.train()
+        client_model.backbone.eval()  # 冻结 BN：head 训练时 backbone 保持 eval
         total_loss = 0.0
         correct = 0
         total = 0
