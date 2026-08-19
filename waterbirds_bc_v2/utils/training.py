@@ -10,6 +10,7 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional
 import time
 import os
+from datetime import datetime
 from tqdm import tqdm
 from utils.model import ResNetWithHead, save_model, load_model
 from utils.dataset import create_data_loaders
@@ -254,11 +255,14 @@ class FederatedTrainer:
         }
     
     def train(self, rounds: int) -> List[Dict[str, float]]:
-        """Train for multiple rounds"""
+        """Train for multiple rounds (含时间统计，便于判断进度与是否卡住)"""
         history = []
-        
+        t0 = time.time()
+
         for round_num in range(rounds):
-            print(f"\nFederated Round {round_num + 1}/{rounds} 开始...", flush=True)
+            elapsed = (time.time() - t0) / 60.0
+            print(f"\n[{datetime.now().strftime('%H:%M:%S')}] "
+                  f"第 {round_num + 1}/{rounds} 轮 | 已用 {elapsed:.1f} 分钟 | 开始...", flush=True)
 
             # Train round
             round_metrics = self.train_round()
@@ -268,7 +272,12 @@ class FederatedTrainer:
                 **round_metrics
             })
 
-            print(f"Round {round_num + 1} - Avg Loss: {round_metrics['avg_loss']:.4f}, "
-                  f"Avg Acc: {round_metrics['avg_accuracy']:.2f}%", flush=True)
-        
+            elapsed2 = (time.time() - t0) / 60.0
+            eta = elapsed2 / (round_num + 1) * (rounds - round_num - 1)
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] "
+                  f"第 {round_num + 1}/{rounds} 轮完成 | Loss: {round_metrics['avg_loss']:.4f} "
+                  f"Acc: {round_metrics['avg_accuracy']:.2f}% | 已用 {elapsed2:.1f} 分, 预计剩 {eta:.1f} 分",
+                  flush=True)
+
+        print(f"\n联邦训练结束，总耗时 {(time.time() - t0) / 60:.1f} 分钟", flush=True)
         return history
