@@ -293,11 +293,11 @@ def main():
     print(f"Using device: {DEVICE}")
     print(f"Seeds: {SEEDS}")
     
-    # Check if data directory exists
-    data_dir = os.path.join(BASE_DIR, "data")
-    if not os.path.exists(data_dir):
-        print(f"Error: Data directory {data_dir} not found")
-        print("Please ensure waterbirds dataset is available")
+    # 检查数据目录（DATA_DIR 已在 config 自动探测）
+    print(f"数据目录: {DATA_DIR}")
+    if not os.path.exists(DATA_DIR) or not os.path.exists(os.path.join(DATA_DIR, "metadata.csv")):
+        print(f"Error: Data directory {DATA_DIR} 未找到 metadata.csv")
+        print("请确认 Kaggle 数据集已挂载（/kaggle/input/datasets/feishuai/waterbird-complete95）")
         return
     
     # Run experiments for each seed
