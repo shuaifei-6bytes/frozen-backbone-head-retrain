@@ -37,8 +37,8 @@ from pathlib import Path
 # ============================================================================
 CONFIG = {
     "seeds": [42, 123, 456, 789],
-    # Kaggle 数据集路径，按你的挂载情况修改
-    "data_dir": "/kaggle/input/waterbird-complete95/waterbird_complete95_forest2water2",
+    # Kaggle 数据集路径
+    "data_dir": "/kaggle/input/datasets/feishuai/waterbird-complete95/waterbird_complete95_forest2water2",
     "num_clients": 5,
     "federated_rounds": 30,
     "local_epochs": 1,
