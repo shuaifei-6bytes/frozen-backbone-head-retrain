@@ -22,32 +22,47 @@ GROUP_NAMES = ["WB-Water", "WB-Land", "LB-Land", "LB-Water"]
 
 
 def load_metadata(root_dir: str, split: str = "train") -> pd.DataFrame:
-    """读取 waterbirds metadata.csv 并过滤指定 split。
+    """读取 waterbirds metadata.csv 并过滤指定 split，归一化列名。
 
     root_dir 指向 waterbird_complete95_forest2water2（含 metadata.csv 与图片子目录）。
-    兼容标准 Waterbirds 元数据列名（img_path / img_filename、waterbird、water_background、split）。
+    兼容两种元数据格式：
+      - 标准：waterbird / water_background / img_path / split(train|val|test)
+      - Kaggle 简版：y / place / img_filename / split(0|1|2)
+    统一映射为 waterbird(1=水鸟)、water_background(1=水背景)、_fullpath、并按 split 过滤。
     """
     meta = pd.read_csv(os.path.join(root_dir, "metadata.csv"))
 
-    def col(name):
-        # 兼容列名差异（例如 img_path 也可能是 img_filename）
-        if name in meta.columns:
-            return name
-        alt = {"img_path": "img_filename", "img_filename": "img_path"}
-        return alt.get(name, name)
+    # split 过滤：字符串或数值(0=train,1=val,2=test)两种编码
+    if "split" in meta.columns:
+        if meta["split"].dtype != object:
+            idx = {"train": 0, "val": 1, "test": 2}[split]
+            meta = meta[meta["split"].astype(int) == idx]
+        else:
+            meta = meta[meta["split"] == split]
 
-    img_col = col("img_path")
-    if img_col not in meta.columns:
+    # 图片路径列（标准 img_path / 简版 img_filename，均含子目录，相对 root）
+    if "img_path" in meta.columns:
+        img_col = "img_path"
+    elif "img_filename" in meta.columns:
+        img_col = "img_filename"
+    else:
         raise KeyError(f"metadata.csv 缺少图片路径列，现有列: {list(meta.columns)}")
-
-    split_col = "split" if "split" in meta.columns else None
-    if split_col is not None:
-        meta = meta[meta[split_col] == split]
-
-    # 图片完整路径
     meta["_fullpath"] = meta[img_col].apply(
-        lambda p: p if os.path.isabs(p) else os.path.join(root_dir, str(p))
+        lambda p: p if os.path.isabs(str(p)) else os.path.join(root_dir, str(p))
     )
+
+    # 鸟类别列：waterbird=1 水鸟 / 0 陆鸟；简版用 y
+    if "waterbird" not in meta.columns and "y" in meta.columns:
+        meta["waterbird"] = meta["y"]
+
+    # 背景列：water_background=1 水背景 / 0 陆地背景；简版用 place
+    if "water_background" not in meta.columns and "place" in meta.columns:
+        meta["water_background"] = meta["place"]
+
+    for required in ("waterbird", "water_background"):
+        if required not in meta.columns:
+            raise KeyError(f"metadata.csv 缺少列 {required}，现有列: {list(meta.columns)}")
+
     return meta.reset_index(drop=True)
 
 
