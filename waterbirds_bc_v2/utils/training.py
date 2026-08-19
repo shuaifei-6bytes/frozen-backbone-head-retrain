@@ -231,12 +231,17 @@ class FederatedTrainer:
         }
     
     def federated_average(self):
-        """Perform federated averaging"""
-        # Initialize global model with zero gradients
+        """Perform federated averaging
+
+        只对可训练参数（head）做清零+平均；冻结的 backbone requires_grad=False，
+        绝不能碰——否则每轮结束 backbone 会被清零且不还原，模型特征被彻底破坏。
+        """
+        # Initialize global head params with zeros
         for param in self.global_model.parameters():
-            param.data.zero_()
-        
-        # Average client weights
+            if param.requires_grad:
+                param.data.zero_()
+
+        # Average client head weights
         for client_model in self.client_models:
             for global_param, client_param in zip(
                 self.global_model.parameters(), client_model.parameters()
