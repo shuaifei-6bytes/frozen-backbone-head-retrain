@@ -168,6 +168,10 @@ class FederatedTrainer:
             filter(lambda p: p.requires_grad, self.global_model.parameters()),
             lr=learning_rate
         )
+
+        # 打印各客户端样本量，便于确认 IID 数据划分已生效
+        for i, tl in enumerate(self.train_loaders):
+            print(f"  [Fed] client {i + 1}/{num_clients} 样本量: {len(tl.dataset)}", flush=True)
     
     def client_update(self, client_idx: int, epochs: int = 1) -> Dict[str, float]:
         """Update a single client model"""
@@ -233,6 +237,8 @@ class FederatedTrainer:
         for client_idx in range(self.num_clients):
             metrics = self.client_update(client_idx, epochs=LOCAL_EPOCHS)
             client_metrics.append(metrics)
+            print(f"    client {client_idx + 1}/{self.num_clients} 完成 | "
+                  f"loss={metrics['loss']:.4f} acc={metrics['accuracy']:.2f}%", flush=True)
         
         # Federated averaging
         self.federated_average()
@@ -252,17 +258,17 @@ class FederatedTrainer:
         history = []
         
         for round_num in range(rounds):
-            print(f"\nFederated Round {round_num + 1}/{rounds}")
-            
+            print(f"\nFederated Round {round_num + 1}/{rounds} 开始...", flush=True)
+
             # Train round
             round_metrics = self.train_round()
-            
+
             history.append({
                 'round': round_num + 1,
                 **round_metrics
             })
-            
+
             print(f"Round {round_num + 1} - Avg Loss: {round_metrics['avg_loss']:.4f}, "
-                  f"Avg Acc: {round_metrics['avg_accuracy']:.2f}%")
+                  f"Avg Acc: {round_metrics['avg_accuracy']:.2f}%", flush=True)
         
         return history
