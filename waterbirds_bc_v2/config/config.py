@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 
 # Basic device configuration
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(f"Using device: {DEVICE}")
+print(f"Using device: {DEVICE}", flush=True)
 
 # Fixed seeds
 SEEDS = [42, 123, 456, 789]

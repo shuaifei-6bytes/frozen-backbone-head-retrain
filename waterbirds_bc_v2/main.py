@@ -5,6 +5,7 @@ Main experiment script for Waterbirds B/C experiment V2
 import os
 import torch
 import numpy as np
+import functools
 from typing import Dict, List
 import json
 from datetime import datetime
@@ -13,6 +14,9 @@ from utils.model import ResNetWithHead, create_model, save_model, load_model
 from utils.dataset import create_data_loaders, create_counterfactual_loader
 from utils.training import Trainer, FederatedTrainer
 from utils.evaluation import Evaluator
+
+# 强制所有 print 实时刷新，避免 stdout 缓冲导致看不到进度
+print = functools.partial(print, flush=True)
 
 def set_seed(seed: int):
     """Set random seed for reproducibility"""
