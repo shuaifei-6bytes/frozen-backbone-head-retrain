@@ -13,6 +13,10 @@ import os
 from tqdm import tqdm
 from utils.model import ResNetWithHead, save_model, load_model
 from utils.dataset import create_data_loaders
+import config.config
+
+# Get device from config
+DEVICE = config.config.DEVICE
 
 class Trainer:
     """Trainer class for federated learning and head retraining"""
