@@ -198,25 +198,36 @@ class FederatedTrainer:
         total = 0
         
         for epoch in range(epochs):
+            e_loss = 0.0
+            e_correct = 0
+            e_total = 0
             for batch_idx, batch in enumerate(train_loader):
                 images = batch['image'].to(self.device)
                 labels = batch['label'].to(self.device)
-                
+
                 client_optimizer.zero_grad()
                 outputs = client_model(images)
                 loss = self.criterion(outputs, labels)
-                
+
                 loss.backward()
                 client_optimizer.step()
-                
+
                 total_loss += loss.item()
+                e_loss += loss.item()
                 _, predicted = outputs.max(1)
                 total += labels.size(0)
+                e_total += labels.size(0)
                 correct += predicted.eq(labels).sum().item()
-        
+                e_correct += predicted.eq(labels).sum().item()
+
+            # 每个 epoch 实时汇报：让 run.log 全程持续推进，绝不长时间静默
+            print(f"      [Fed] client {client_idx + 1} epoch {epoch + 1}/{epochs} "
+                  f"| loss={e_loss / max(len(train_loader), 1):.4f} "
+                  f"acc={100.0 * e_correct / max(e_total, 1):.2f}%", flush=True)
+
         return {
             'loss': total_loss / (len(train_loader) * epochs),
-            'accuracy': 100. * correct / (total * epochs)
+            'accuracy': 100.0 * correct / max(total, 1)
         }
     
     def federated_average(self):
