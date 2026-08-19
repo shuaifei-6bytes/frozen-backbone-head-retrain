@@ -44,10 +44,21 @@ def run_federated_training(seed: int, seed_dir: str) -> str:
         split="train"
     )
     
+    # IID 划分：每个客户端拿全量训练的 1/NUM_CLIENTS（文档 4.2「简单 IID 场景」）
+    # 原实现 [train_loader]*5 让 5 客户端共用同一全量数据 = 每轮 5 个全量 epoch，
+    # 等价单机重复且极慢；IID 均分后每轮总计算量 = 1 个全量 epoch（约 5 倍提速）
+    full_ds = train_loader.dataset
+    n = len(full_ds)
+    perm = np.random.RandomState(seed).permutation(n)
+    parts = np.array_split(perm, NUM_CLIENTS)
+    from torch.utils.data import Subset, DataLoader
+    train_loaders = [DataLoader(Subset(full_ds, p.tolist()), batch_size=BATCH_SIZE,
+                                shuffle=True, num_workers=4, pin_memory=True) for p in parts]
+
     # Create federated trainer
     federated_trainer = FederatedTrainer(
         num_clients=NUM_CLIENTS,
-        train_loaders=[train_loader] * NUM_CLIENTS,  # Simplified: same data for all clients
+        train_loaders=train_loaders,
         val_loaders=[val_loader] * NUM_CLIENTS,
         learning_rate=LEARNING_RATE,
         device=DEVICE
