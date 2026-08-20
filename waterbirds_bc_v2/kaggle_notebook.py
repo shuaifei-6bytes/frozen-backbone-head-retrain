@@ -7,6 +7,7 @@ This notebook provides a complete template for running the Waterbirds B/C experi
 # 1. Setup and Imports
 import os
 import sys
+import functools
 import torch
 import numpy as np
 import pandas as pd
@@ -14,8 +15,17 @@ from datetime import datetime
 import json
 from pathlib import Path
 
+# 强制所有 print 实时刷新：Kaggle cell / nohup 日志里都能逐行滚动看进度
+print = functools.partial(print, flush=True)
+
 # Add the project directory to Python path
-project_dir = "/kaggle/working/waterbirds_bc_v2"
+# 兼容两种布局：git clone 到 /kaggle/working/repo（%%bash 推荐跑法）或直接解压到 /kaggle/working
+_candidates = [
+    "/kaggle/working/repo/waterbirds_bc_v2",   # git clone frozen-backbone-head-retrain 后的实际路径
+    "/kaggle/working/waterbirds_bc_v2",        # 直接上传/解压布局
+    os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else None,
+]
+project_dir = next((p for p in _candidates if p and os.path.isdir(os.path.join(p, "config"))), _candidates[0])
 os.makedirs(project_dir, exist_ok=True)
 os.chdir(project_dir)
 
@@ -192,12 +202,13 @@ def evaluate_models(seed: int, seed_dir: str,
         batch_size=EVAL_BATCH_SIZE
     )
 
-    # 全量验证集评估（不套训练分布）
+    # 全量测试集评估（文档 §11：统一测试集；不套训练分布）
     _, eval_loader = create_data_loaders(
         data_dir=data_dir,
         batch_size=EVAL_BATCH_SIZE,
         distribution=None,
-        split="val"
+        split="test",
+        eval_split="test"
     )
     
     # Models to evaluate

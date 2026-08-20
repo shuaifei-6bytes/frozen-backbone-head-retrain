@@ -16,8 +16,17 @@ class ResNetWithHead(nn.Module):
     def __init__(self, num_classes: int = 2, freeze_backbone: bool = True):
         super(ResNetWithHead, self).__init__()
         
-        # Load pretrained ResNet
-        self.backbone = models.resnet50(pretrained=PRETRAINED)
+        # 加载 ResNet（兼容新旧 torchvision：新版已移除 pretrained 参数，直接传会 TypeError）
+        if PRETRAINED:
+            try:
+                # IMAGENET1K_V1 与旧版 pretrained=True 是同一套权重，结果完全一致
+                from torchvision.models import ResNet50_Weights
+                self.backbone = models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V1)
+            except ImportError:
+                # 旧版 torchvision（<0.13）没有 Weights 枚举，退回 pretrained 参数
+                self.backbone = models.resnet50(pretrained=True)
+        else:
+            self.backbone = models.resnet50(weights=None)
         
         # Freeze backbone if specified
         if freeze_backbone:
@@ -55,18 +64,28 @@ class ResNetWithHead(nn.Module):
         return logits
     
     def load_backbone_from_checkpoint(self, checkpoint_path: str):
-        """Load only the backbone from a checkpoint"""
+        """Load only the backbone from a checkpoint
+
+        save_model 保存的是嵌套 dict {'backbone': {...}, 'head': {...}, 'model_state_dict': {...}}；
+        旧实现按 'backbone.' 前缀遍历顶层 key 永远匹配不上（顶层 key 是 'backbone'，不带点），
+        导致静默加载空 dict、backbone 一直是 ImageNet 初始权重。现直接取 checkpoint['backbone']，
+        并兼容旧的扁平格式；strict=True 保证结构对不上时立刻报错而不是静默跳过。
+        """
         checkpoint = torch.load(checkpoint_path, map_location=DEVICE)
-        
-        # Load backbone state dict
-        backbone_state_dict = {}
-        for key, value in checkpoint.items():
-            if key.startswith('backbone.'):
-                new_key = key.replace('backbone.', '')
-                backbone_state_dict[new_key] = value
-        
-        # Load backbone weights
-        self.backbone.load_state_dict(backbone_state_dict, strict=False)
+
+        if isinstance(checkpoint, dict) and "backbone" in checkpoint:
+            # 新格式：save_model 的嵌套 dict
+            backbone_state_dict = checkpoint["backbone"]
+        else:
+            # 兼容旧格式：扁平 state_dict（key 形如 'backbone.xxx'）
+            backbone_state_dict = {
+                k.replace("backbone.", "", 1): v
+                for k, v in checkpoint.items()
+                if k.startswith("backbone.")
+            }
+
+        # 结构必须完全对上；加载失败立即抛错，不允许静默通过
+        self.backbone.load_state_dict(backbone_state_dict)
     
     def load_head_from_checkpoint(self, checkpoint_path: str):
         """Load only the head from a checkpoint"""

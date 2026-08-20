@@ -161,12 +161,13 @@ def evaluate_models(seed: int, seed_dir: str,
         batch_size=EVAL_BATCH_SIZE
     )
 
-    # 全量验证集评估（不套训练分布）
+    # 全量测试集评估（文档 §11：统一测试集；不套训练分布）
     _, eval_loader = create_data_loaders(
         data_dir=DATA_DIR,
         batch_size=EVAL_BATCH_SIZE,
         distribution=None,  # 评估用全量
-        split="val"
+        split="test",
+        eval_split="test"
     )
     
     # Models to evaluate

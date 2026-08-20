@@ -7,7 +7,6 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 from utils.model import ResNetWithHead
 import config.config as cfg
@@ -28,7 +27,7 @@ class Evaluator:
         total = {g: 0 for g in GROUP_NAMES}
         self.model.eval()
         with torch.no_grad():
-            for batch in tqdm(data_loader, desc="group acc"):
+            for batch in data_loader:
                 imgs = batch["image"].to(self.device)
                 labels = batch["label"].to(self.device)
                 groups = batch["group"]
@@ -44,7 +43,7 @@ class Evaluator:
         correct = total = 0
         self.model.eval()
         with torch.no_grad():
-            for batch in tqdm(data_loader, desc="overall acc"):
+            for batch in data_loader:
                 imgs = batch["image"].to(self.device)
                 labels = batch["label"].to(self.device)
                 _, pred = self.model(imgs).max(1)
@@ -56,21 +55,25 @@ class Evaluator:
         """逐反事实对输出目标类概率，供 signed effect/翻转率推导。
 
         对每个 pair：
-          - kind=waterbird: imgA=水背景样本, imgB=陆地背景样本；目标类=水鸟(下标0)
-          - kind=landbird : imgA=陆地背景样本, imgB=水背景样本；目标类=陆鸟(下标1)
+          - kind=waterbird: imgA=水背景样本, imgB=陆地背景样本；目标类=水鸟(下标1)
+          - kind=landbird : imgA=陆地背景样本, imgB=水背景样本；目标类=陆鸟(下标0)
         pA/pB 为对应目标类概率。
+
+        标签约定（utils/dataset.py）：label = y，1=水鸟 / 0=陆鸟，
+        故 softmax 下标 1 才是 P(水鸟)。旧实现写反（水鸟取下标0），
+        会导致 signed effect 全部变号、original/reverse 翻转率互换。
         """
         self.model.eval()
         out = {"kind": [], "pA": [], "pB": []}
         with torch.no_grad():
-            for batch in tqdm(counterfactual_loader, desc="counterfactual"):
+            for batch in counterfactual_loader:
                 imgA = batch["imgA"].to(self.device)
                 imgB = batch["imgB"].to(self.device)
                 kinds = batch["kind"]
                 pa = F.softmax(self.model(imgA), dim=1)
                 pb = F.softmax(self.model(imgB), dim=1)
                 for i, k in enumerate(kinds):
-                    target_idx = 0 if k == "waterbird" else 1
+                    target_idx = 1 if k == "waterbird" else 0
                     out["kind"].append(k)
                     out["pA"].append(pa[i][target_idx].item())
                     out["pB"].append(pb[i][target_idx].item())

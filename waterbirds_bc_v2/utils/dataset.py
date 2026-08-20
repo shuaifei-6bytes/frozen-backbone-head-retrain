@@ -195,15 +195,20 @@ class CounterfactualDataset(Dataset):
 def create_data_loaders(data_dir: str, batch_size: int = 32,
                         distribution: Dict[str, float] = None,
                         split: str = "train",
-                        seed: int = 42) -> Tuple[DataLoader, DataLoader]:
-    """创建训练集（可带分布采样）与全量验证集。"""
+                        seed: int = 42,
+                        eval_split: str = "val") -> Tuple[DataLoader, DataLoader]:
+    """创建训练集（可带分布采样）与评估集。
+
+    split 参数保留兼容但训练集固定用 train；eval_split 控制评估集用哪个
+    split（head 重训过程中的 validate 用 val，最终评估按文档 §11 用 test）。
+    """
     train_dataset = WaterbirdsDataset(
         root_dir=data_dir, split="train",
         distribution=distribution, transform=get_transform("train"), seed=seed,
     )
-    # 验证集始终全量（不套用训练分布），保证评估口径干净
+    # 评估集始终全量（不套用训练分布），保证评估口径干净
     val_dataset = WaterbirdsDataset(
-        root_dir=data_dir, split="val", transform=get_transform("val"), seed=seed,
+        root_dir=data_dir, split=eval_split, transform=get_transform("val"), seed=seed,
     )
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,

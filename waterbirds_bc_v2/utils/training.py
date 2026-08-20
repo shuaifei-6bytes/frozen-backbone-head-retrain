@@ -11,10 +11,17 @@ from typing import Dict, List, Tuple, Optional
 import time
 import os
 from datetime import datetime
-from tqdm import tqdm
 from utils.model import ResNetWithHead, save_model, load_model
 from utils.dataset import create_data_loaders
 import config.config
+
+# tqdm 在 nohup 日志/Kaggle 后台输出里会逐 batch 刷屏（每行一个 \r 进度条），
+# 淹没关键训练日志；改用轻量进度打印，每个 epoch 汇总一次
+from tqdm import tqdm
+
+def _tqdm(iterable, desc="", total=None):
+    """静默包装器：直接透传迭代，不产生逐 batch 进度条输出"""
+    return iterable
 
 # Get device from config
 DEVICE = config.config.DEVICE
@@ -54,7 +61,7 @@ class Trainer:
         correct = 0
         total = 0
         
-        for batch_idx, batch in enumerate(tqdm(self.train_loader, desc="Training")):
+        for batch_idx, batch in enumerate(_tqdm(self.train_loader, desc="Training")):
             images = batch['image'].to(self.device)
             labels = batch['label'].to(self.device)
             
@@ -90,7 +97,7 @@ class Trainer:
         total = 0
         
         with torch.no_grad():
-            for batch in tqdm(self.val_loader, desc="Validating"):
+            for batch in _tqdm(self.val_loader, desc="Validating"):
                 images = batch['image'].to(self.device)
                 labels = batch['label'].to(self.device)
                 
@@ -131,11 +138,10 @@ class Trainer:
             
             print(f"Train Loss: {train_metrics['loss']:.4f}, Train Acc: {train_metrics['accuracy']:.2f}%")
             print(f"Val Loss: {val_metrics['loss']:.4f}, Val Acc: {val_metrics['accuracy']:.2f}%")
-            
-            # Save checkpoint if path provided
-            if save_path:
-                checkpoint_path = f"{save_path}_epoch_{epoch + 1}.pt"
-                save_model(self.model, checkpoint_path)
+
+            # 只保留最终模型，不再每个 epoch 存 checkpoint：
+            # 完整模型约 200MB/个，B/C 共 40 个/seed，4 seed 约 32GB，必超 Kaggle 20GB 磁盘限额
+            # 训练历史已完整记录在 history json，需要中间权重可按需恢复
         
         # Save final model
         if save_path:
