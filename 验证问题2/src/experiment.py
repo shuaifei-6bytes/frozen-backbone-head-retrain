@@ -184,7 +184,7 @@ def evaluate(model: nn.Module, dataset: Dataset, batch_size: int, device: torch.
         correct += int((pred == y).sum()); total += len(y)
         for p, truth, group in zip(pred.tolist(), y.tolist(), batch["group"]): groups[group][0] += int(p == truth); groups[group][1] += 1
     result = {"overall_accuracy": correct / total, **{f"group_accuracy_{g}": c/n for g,(c,n) in groups.items()}}
-    result["worst_group_accuracy"] = min(result[f"group_accuracy_{g}"] for g in GROUPS)
+    result["worst_group_accuracy"] = min(result[f"group_accuracy_{g}"] for g in groups)
     return result
 
 
