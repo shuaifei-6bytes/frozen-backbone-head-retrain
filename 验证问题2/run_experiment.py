@@ -117,8 +117,9 @@ def summarize(results: list[dict], output: Path) -> None:
 def main() -> int:
     args = arguments(); args.output_dir.mkdir(parents=True, exist_ok=True); device = device_for(args.device)
     logging.basicConfig(filename=args.output_dir / "run.log", level=logging.INFO, format="%(asctime)s %(message)s")
-    info = {"torch_version": torch.__version__, "cuda_version": torch.version.cuda, "cuda_available": torch.cuda.is_available(), "gpu_name": torch.cuda.get_device_name(device) if device.type == "cuda" else None, "device": str(device), "config": vars(args), "design_limitations": "See per-seed counterfactual_scope.json; no same-subject background swaps exist in standard composite Waterbirds."}
-    info["config"]["data_dir"] = str(args.data_dir); info["config"]["output_dir"] = str(args.output_dir); write_json(args.output_dir / "experiment_info.json", info)
+    config = {**vars(args), "data_dir": str(args.data_dir), "output_dir": str(args.output_dir)}
+    info = {"torch_version": torch.__version__, "cuda_version": torch.version.cuda, "cuda_available": torch.cuda.is_available(), "gpu_name": torch.cuda.get_device_name(device) if device.type == "cuda" else None, "device": str(device), "config": config, "design_limitations": "See per-seed counterfactual_scope.json; no same-subject background swaps exist in standard composite Waterbirds."}
+    write_json(args.output_dir / "experiment_info.json", info)
     print(json.dumps(info, indent=2, default=str)); records = load_records(args.data_dir.resolve())
     results = [run_seed(seed, records, args, device) for seed in args.seeds]
     summarize(results, args.output_dir); return 0
