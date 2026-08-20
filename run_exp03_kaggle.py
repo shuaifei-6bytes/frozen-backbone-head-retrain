@@ -96,7 +96,7 @@ def main():
     # One initialization, copied bit-for-bit to both heads; no backbone buffer or parameter is trainable.
     fresh=Model().head; init=copy.deepcopy(fresh.state_dict())
     for model in (g,b):
-        model.head=copy.deepcopy(fresh); model.head.load_state_dict(init)
+        model.head=copy.deepcopy(fresh).to(device); model.head.load_state_dict(init)
         for q in model.backbone.parameters(): q.requires_grad_(False)
         for q in model.head.parameters(): q.requires_grad_(True)
     f=metadata(a.data_dir); train=f[f.split==0]; groups={(y,k):x for (y,k),x in train.groupby(["y","place"])}
