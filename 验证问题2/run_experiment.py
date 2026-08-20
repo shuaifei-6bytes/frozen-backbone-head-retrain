@@ -75,10 +75,12 @@ def run_seed(seed: int, records, args, device: torch.device) -> dict:
     }
     models, metrics, histories = {}, {}, {}
     for name, client_loaders in conditions.items():
+        print(f"[seed={seed}] training {name} with {len(client_loaders)} clients", flush=True)
         model, history = fedavg(initial, client_loaders, args.global_rounds, args.lr, device)
         models[name], histories[name] = model, history
         torch.save(model.cpu().state_dict(), out / f"{name}.pt"); model.to(device)
         metrics[name] = metric_bundle(model, records, natural_test, a_holdout, be_holdouts, args, device)
+        print(f"[seed={seed}] finished {name}: overall_accuracy={metrics[name]['overall_accuracy']:.4f}, background_gap={metrics[name]['background_gap']:.4f}", flush=True)
     full_metrics = metrics["M_full"]
     over = {}
     for arm in ("M_A_neutral", "M_minus_A"):
@@ -96,6 +98,7 @@ def run_seed(seed: int, records, args, device: torch.device) -> dict:
     payload = {"seed": seed, "metrics": metrics, "over_forgetting": over, "gates": gates, "training_history": histories}
     write_json(out / "metrics.json", payload)
     write_json(out / "counterfactual_scope.json", {"strict_same_subject_background_swap_available": False, "status": "approximate_same_label_cross_image_background pairs", "reason": "Standard Waterbirds composites expose no alternative background rendering for an image id. Training keeps Client-A source pool and sample count fixed, but neutral group resampling cannot retain the exact occurrence image-id set."})
+    print(f"[seed={seed}] artifacts written to {out}", flush=True)
     return payload
 
 

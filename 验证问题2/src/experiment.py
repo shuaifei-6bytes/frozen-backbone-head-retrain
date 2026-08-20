@@ -168,7 +168,9 @@ def fedavg(init_state: Mapping[str, torch.Tensor], client_loaders: list[DataLoad
                 loss_sum += loss.item() * len(batch["label"])
             local_states.append({k:v.detach().cpu() for k,v in local.state_dict().items()}); weights.append(len(loader.dataset)); losses.append(loss_sum / len(loader.dataset))
         total = sum(weights); averaged = {k: sum(state[k] * (w / total) for state, w in zip(local_states, weights)) for k in local_states[0]}
-        global_model.load_state_dict(averaged); history.append({"round": rnd+1, "mean_client_loss": float(np.mean(losses))})
+        mean_loss = float(np.mean(losses))
+        global_model.load_state_dict(averaged); history.append({"round": rnd+1, "mean_client_loss": mean_loss})
+        print(f"[FedAvg] round {rnd + 1}/{rounds} | mean client loss={mean_loss:.6f}", flush=True)
     return global_model, history
 
 
