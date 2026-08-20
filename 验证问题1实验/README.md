@@ -1,12 +1,12 @@
 # 实验 1：Client A 关系贡献归因
 
-本目录实现 `实验设计单.md` 中的两条严格配对联邦训练轨迹：
+本目录使用现有 Kaggle Waterbirds 合成图片，实现两条近似配对联邦训练轨迹：
 
 - `M_full`：Client 0 为 95% aligned / 5% conflicting；
 - `M_A_neutral`：Client 0 四组均衡；
-- Clients 1–4、client split、原始主体、类别、样本数、模型初始化、随机种子、超参数和 FedAvg 流程完全相同。
+- Clients 1–4、client source pool、样本数、模型初始化、随机种子、超参数和 FedAvg 流程完全相同。
 
-代码不会把不同鸟图片随机配成“反事实对”。训练时使用原始主体图、分割掩码和背景图在线合成；审计集对同一主体分别合成水、陆背景。
+Client 0 在固定 source pool 内按四组比例重采样。由于现有数据没有原始主体、mask 和背景，审计使用固定的同类别不同图片配对；因此本实现验证的是“Client 0 四组训练分布干预是否降低模型背景依赖”，不是严格的同主体背景替换因果实验。
 
 ## 目录
 
@@ -24,30 +24,18 @@ experiments/exp01_client_relation_attribution/
 
 ## 输入数据契约
 
-`--data-dir` 必须包含 `metadata.csv`，并能解析到三类原始资产：主体图、主体掩码和背景图。仅有已经合成好的标准 Waterbirds 图片不能满足“相同 subject/image、只换背景”的关键控制，代码会明确拒绝这种输入。
+`--data-dir` 直接指向现有 Kaggle 数据目录：
 
 推荐结构：
 
 ```text
-data/
-├── metadata.csv
-├── subjects/
-├── masks/
-└── backgrounds/
+/kaggle/input/datasets/feishuai/waterbird-complete95/
+└── waterbird_complete95_forest2water2/
+    ├── metadata.csv
+    └── 001.Black_footed_Albatross/ ...
 ```
 
-`metadata.csv` 每行需要：
-
-- `subject_id` 或 `img_id`
-- `y` / `waterbird` / `label`（1=Waterbird，0=Landbird）
-- `split`（0/1/2 或 train/val/test）
-- `subject_filename` 或 `foreground_filename`
-- `mask_filename` 或 `segmentation_filename`
-- `place_filename` 或 `background_filename`
-- `place` / `water_background` / `background`（1=Water，0=Land）
-- 可选 `img_filename` / `img_path`：自然测试集的原始合成图
-
-绝对路径可直接写入元数据；相对路径分别以 `subjects/`、`masks/`、`backgrounds/` 为根解析。掩码中白色区域表示主体。
+`metadata.csv` 使用现有六列：`img_id,img_filename,y,split,place,place_filename`。
 
 ## 运行命令
 
@@ -58,7 +46,7 @@ data/
 ```bash
 python -m experiments.exp01_client_relation_attribution.run_experiment \
   --device cuda \
-  --data-dir /kaggle/working/data \
+  --data-dir /kaggle/input/datasets/feishuai/waterbird-complete95/waterbird_complete95_forest2water2 \
   --output-dir /kaggle/working/outputs \
   --seeds 42 123 456 789
 ```
@@ -68,7 +56,7 @@ Smoke test：
 ```bash
 python -m experiments.exp01_client_relation_attribution.run_experiment \
   --device cuda \
-  --data-dir /kaggle/working/data \
+  --data-dir /kaggle/input/datasets/feishuai/waterbird-complete95/waterbird_complete95_forest2water2 \
   --output-dir /kaggle/working/outputs_smoke \
   --seeds 42 \
   --global-rounds 10 \

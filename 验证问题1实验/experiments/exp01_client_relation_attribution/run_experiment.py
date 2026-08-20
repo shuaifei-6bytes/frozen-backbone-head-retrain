@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader
 from .audit import evaluate_model
 from .config import ExperimentConfig, SEEDS
 from .data import (
+    ApproximateCounterfactualDataset,
     NaturalTestDataset,
-    StrictCounterfactualDataset,
     assignments_to_rows,
     build_paired_assignments,
     load_subject_records,
@@ -142,7 +142,7 @@ def run_seed(
     )
     write_csv(seed_dir / "relation_assignment_manifest.csv", relation_rows)
 
-    audit_dataset = StrictCounterfactualDataset(
+    audit_dataset = ApproximateCounterfactualDataset(
         records,
         config.image_size,
         config.audit_subjects_per_class,
@@ -242,7 +242,8 @@ def main(argv: list[str] | None = None) -> int:
         "smoke_test": args.smoke_test,
         "config": config.to_dict(),
         "hardware": hardware_info(device),
-        "controlled_difference": "Client 0 background-label assignment only",
+        "intervention": "Client 0 composite-image group sampling distribution",
+        "evidence_scope": "approximate distribution intervention; not strict same-subject background replacement",
     }
     write_json(output_dir / "experiment_info.json", info)
     print(f"PyTorch version: {info['hardware']['torch_version']}", flush=True)
