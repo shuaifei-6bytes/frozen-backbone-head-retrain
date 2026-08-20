@@ -142,7 +142,7 @@ class ImageDataset(Dataset):
 
 
 def loaders(assignments: Mapping[int, list[Assignment]], batch_size: int, image_size: int, workers: int, seed: int) -> list[DataLoader]:
-    return [DataLoader(ImageDataset(assignments[i], image_size, True), batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True, generator=torch.Generator().manual_seed(seed+i)) for i in range(5)]
+    return [DataLoader(ImageDataset(assignments[client_id], image_size, True), batch_size=batch_size, shuffle=True, num_workers=workers, pin_memory=True, generator=torch.Generator().manual_seed(seed + client_id)) for client_id in sorted(assignments)]
 
 
 def make_model() -> nn.Module:
