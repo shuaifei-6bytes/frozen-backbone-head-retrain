@@ -289,6 +289,13 @@ def read_metadata(data_dir: Path) -> pd.DataFrame:
     if not metadata_path.is_file():
         raise FileNotFoundError(f"Missing Waterbirds metadata: {metadata_path}")
     frame = pd.read_csv(metadata_path)
+    # Match the two metadata variants supported by waterbirds_bc_v2.
+    frame = frame.rename(columns={
+        "img_path": "img_filename", "waterbird": "y", "water_background": "place",
+    })
+    if "split" in frame and frame["split"].dtype == object:
+        split_codes = {"train": 0, "val": 1, "test": 2}
+        frame["split"] = frame["split"].map(split_codes)
     required = {"img_filename", "y", "place", "split"}
     missing = required - set(frame.columns)
     if missing:
