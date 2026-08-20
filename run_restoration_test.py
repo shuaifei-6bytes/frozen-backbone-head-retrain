@@ -43,6 +43,21 @@ DEFAULT_BATCH_SIZE = 128
 CLASSIFIER_NAMES = ("fc", "classifier", "head")
 
 
+class WaterbirdsResNet50(nn.Module):
+    """Checkpoint-compatible model used by ``waterbirds_bc_v2`` in this repo."""
+
+    def __init__(self, num_classes: int = 2):
+        super().__init__()
+        self.backbone = models.resnet50(weights=None)
+        self.backbone.fc = nn.Identity()
+        self.head = nn.Sequential(
+            nn.Linear(2048, 512), nn.ReLU(), nn.Dropout(0.5), nn.Linear(512, num_classes)
+        )
+
+    def forward(self, images: Tensor) -> Tensor:
+        return self.head(self.backbone(images))
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--data-dir", type=Path, required=True)
@@ -60,8 +75,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--weight-decay", type=float, default=0.0)
-    parser.add_argument("--architecture", default="resnet50",
-                        choices=("resnet18", "resnet50", "mobilenet_v3_small"),
+    parser.add_argument("--architecture", default="waterbirds_resnet50",
+                        choices=("waterbirds_resnet50", "resnet18", "resnet50", "mobilenet_v3_small"),
                         help="Used only when checkpoints are state_dict files.")
     parser.add_argument("--num-classes", type=int, default=2)
     parser.add_argument("--train-oracle-if-missing", action="store_true")
@@ -106,6 +121,8 @@ def seed_everything(seed: int) -> None:
 
 
 def build_model(architecture: str, num_classes: int) -> nn.Module:
+    if architecture == "waterbirds_resnet50":
+        return WaterbirdsResNet50(num_classes=num_classes)
     if architecture == "resnet18":
         return models.resnet18(weights=None, num_classes=num_classes)
     if architecture == "resnet50":
